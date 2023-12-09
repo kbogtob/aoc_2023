@@ -101,6 +101,51 @@ impl HandType {
             HandType::FiveOfAKind => 7,
         }
     }
+
+    fn upgrade(&self, joker_count: u8) -> HandType {
+        match self {
+            HandType::HighCard => match joker_count {
+                0 => HandType::HighCard,
+                1 => HandType::Pair,
+                2 => HandType::ThreeOfAKind,
+                3 => HandType::FourOfAKind,
+                4 => HandType::FiveOfAKind,
+                5 => HandType::FiveOfAKind,
+                _ => unreachable!(),
+            },
+            HandType::Pair => match joker_count {
+                0 => HandType::Pair,
+                1 => HandType::ThreeOfAKind,
+                2 => HandType::FourOfAKind,
+                3 => HandType::FiveOfAKind,
+                _ => unreachable!(),
+            },
+            HandType::TwoPair => match joker_count {
+                0 => HandType::TwoPair,
+                1 => HandType::FullHouse,
+                _ => unreachable!(),
+            },
+            HandType::ThreeOfAKind => match joker_count {
+                0 => HandType::ThreeOfAKind,
+                1 => HandType::FourOfAKind,
+                2 => HandType::FiveOfAKind,
+                _ => unreachable!(),
+            },
+            HandType::FullHouse => match joker_count {
+                0 => HandType::FullHouse,
+                _ => unreachable!(),
+            },
+            HandType::FourOfAKind => match joker_count {
+                0 => HandType::FourOfAKind,
+                1 => HandType::FiveOfAKind,
+                _ => unreachable!(),
+            },
+            HandType::FiveOfAKind => match joker_count {
+                0 => HandType::FiveOfAKind,
+                _ => unreachable!(),
+            },
+        }
+    }
 }
 
 impl PartialOrd for HandType {
@@ -162,66 +207,7 @@ fn counts_by_cards<'a>(card_counts: &'a HashMap<&Card, u8>) -> HashMap<u8, HashS
     counts_by_cards
 }
 
-fn resolve_handtype(cards: &[Card]) -> HandType {
-    let card_counts = count_cards(cards);
-    let counts_by_cards = counts_by_cards(&card_counts);
-
-    let joker_count = card_counts.get(&Card::Joker).unwrap_or(&0);
-
-    match joker_count {
-        5 => return HandType::FiveOfAKind,
-        4 => return HandType::FiveOfAKind,
-        3 => {
-            // if there's another pair, it becomes a FiveOfAKind
-            if counts_by_cards.contains_key(&2) {
-                return HandType::FiveOfAKind;
-            } else {
-                // otherwise, it's at least a FourOfAKind
-                return HandType::FourOfAKind;
-            }
-        }
-        2 => {
-            // if we have another ThreeOfAKind, it becomes a FiveOfAKind
-            if counts_by_cards.contains_key(&3) {
-                return HandType::FiveOfAKind;
-                // if there's another pair, it's a FourOfAKind
-            } else if counts_by_cards
-                .get(&2)
-                .map(|matching_cards| matching_cards.len() == 2)
-                .unwrap()
-            {
-                return HandType::FourOfAKind;
-            } else {
-                // otherwise, it's at least a ThreeOfAKind
-                return HandType::ThreeOfAKind;
-            }
-        }
-        1 => {
-            // if we have another FourOfAKind, it becomes a FiveOfAKind
-            if counts_by_cards.contains_key(&4) {
-                return HandType::FiveOfAKind;
-                // if we have another ThreeOfAKind, it becomes a FourOfAKind
-            } else if counts_by_cards.contains_key(&3) {
-                return HandType::FourOfAKind;
-            }
-
-            let pair_count = counts_by_cards
-                .get(&2)
-                .map(|matching_cards| matching_cards.len())
-                .unwrap_or(0);
-
-            match pair_count {
-                // if we have two other pairs, it's a FullHouse
-                2 => return HandType::FullHouse,
-                // if we have only one other pair, it's a ThreeOfAKind
-                1 => return HandType::ThreeOfAKind,
-                // otherwise, it's just a pair
-                _ => return HandType::Pair,
-            }
-        }
-        _ => {}
-    }
-
+fn resolve_handtype_without_joker(counts_by_cards: &HashMap<u8, HashSet<&Card>>) -> HandType {
     // if there's 5 of the same card, FiveOfAKind
     if counts_by_cards.contains_key(&5) {
         return HandType::FiveOfAKind;
@@ -256,6 +242,16 @@ fn resolve_handtype(cards: &[Card]) -> HandType {
         } // in the worst case, HighCard
         None => HandType::HighCard,
     }
+}
+
+fn resolve_handtype(cards: &[Card]) -> HandType {
+    let mut card_counts = count_cards(cards);
+    let joker_count = card_counts.remove(&Card::Joker).unwrap_or(0);
+    let counts_by_cards = counts_by_cards(&card_counts);
+
+    let basic_handtype = resolve_handtype_without_joker(&counts_by_cards);
+
+    basic_handtype.upgrade(joker_count)
 }
 
 impl Hand {
